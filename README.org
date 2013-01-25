@@ -1,0 +1,20 @@
+* Project description 
+** Vision
+  - Easy access video-on-demand sites for everyone
+** Mision
+  - Implement a software application to parse various onDemand web sites 
+    and present the content in a much simpler format compatible with embedded media players
+* Project content
+** C application using libxml2 for HTML parsing allowing easely to add new site to parse and new output formats
+** Use case
+   - simple media browser ask "Core" by "Simplest web server" to parse a known site: GET http://myServer/flvParser?url='someSite/and_path'
+   - "Core" add request in a queue, deciding the right "Output plugin" based on browser identification
+   - "Core" ask the corresponding "Input plugin" to parse the site
+   - "Input plugin" will parse the site and present information to "Core" in a standard format (href & name).
+   - "Core" will answer the request using the right "Output plugin"
+** Structure
+*** Input plugin
+*** Core
+*** Output plugin
+*** Simplest web server
+
