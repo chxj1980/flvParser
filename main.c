@@ -8,177 +8,215 @@
 
 
 
-/**
- * print_xpath_nodes:
- * @nodes:		the nodes set.
- * @output:		the output file handle.
- *
- * Prints the @nodes content to @output.
- */
-void
-print_xpath_nodes(xmlNodeSetPtr nodes, char* output) {
+
+#define SERVER "http://localhost:8080/flvParser"
+
+xmlXPathObjectPtr filter990(htmlDocPtr* pdoc, xmlXPathContextPtr* pxpathCtx, char * path)
+{
+    xmlXPathObjectPtr xpathObj = NULL;
+    
+    if (path == NULL) {
+        /// main page
+        
+        * pdoc = htmlReadFile ("http://990.ro", NULL, 0);
+        if (*pdoc == NULL) {
+            printf("Error: cannot read file\n");
+            return(NULL);        
+        }
+        printf("File was read\n");
+        
+        *pxpathCtx = xmlXPathNewContext(*pdoc);
+        if(*pxpathCtx == NULL) {
+            printf("Error: unable to create new XPath context\n");
+            xmlFreeDoc(*pdoc); 
+            return(NULL);
+        }
+        /* Evaluate xpath expression */
+        xmlChar* xpathExpr = "//*[@id='ddtopmenubar']//a";
+        xpathObj = xmlXPathEvalExpression(xpathExpr, *pxpathCtx);
+        if(xpathObj == NULL) {
+            fprintf(stderr,"Error: unable to evaluate xpath expression \"%s\"\n", xpathExpr);
+            xmlXPathFreeContext(*pxpathCtx); 
+            xmlFreeDoc(*pdoc); 
+            return(NULL);
+        }
+        
+    }
+    else if (strcmp(path,"seriale.html") == 0) {
+        /// main page
+        
+        * pdoc = htmlReadFile ("http://990.ro/seriale.html", NULL, 0);
+        if (*pdoc == NULL) {
+            printf("Error: cannot read file\n");
+            return(NULL);        
+        }
+        printf("File was read\n");
+        
+        *pxpathCtx = xmlXPathNewContext(*pdoc);
+        if(*pxpathCtx == NULL) {
+            printf("Error: unable to create new XPath context\n");
+            xmlFreeDoc(*pdoc); 
+            return(NULL);
+        }
+        /* Evaluate xpath expression */
+        xmlChar* xpathExpr = "//a[@class='titlu']";
+        xpathObj = xmlXPathEvalExpression(xpathExpr, *pxpathCtx);
+        if(xpathObj == NULL) {
+            fprintf(stderr,"Error: unable to evaluate xpath expression \"%s\"\n", xpathExpr);
+            xmlXPathFreeContext(*pxpathCtx); 
+            xmlFreeDoc(*pdoc); 
+            return(NULL);
+        }
+        
+    }
+
+    return(xpathObj);
+    
+}
+
+
+xmlXPathObjectPtr handleInput(htmlDocPtr* pdoc, xmlXPathContextPtr* pxpathCtx, const struct mg_request_info *request_info)
+{
+    xmlXPathObjectPtr xpathObj = NULL;
+    char* query_string = NULL;
+    char* path = NULL;
+    char* server = NULL;    
+    /// detecting server, to select right input plugin
+    printf("Query string: %s\n", request_info->query_string);
+    query_string = strdup(request_info->query_string);
+    if (server = strtok(query_string, "&"))
+    {
+        path = strtok(NULL, "&" );
+    }
+    else {
+        server = query_string;
+    }
+    
+    printf("Server: %s, path: %s\n", server, path);
+
+    if (strcmp(server, "www.990.ro") == 0) {
+        /// 990 server, so handle it there
+        
+        xpathObj = filter990( pdoc, pxpathCtx, path);
+    }
+    free(query_string);
+    query_string = NULL;
+    return xpathObj;
+
+}
+
+int handleWgetOutput(xmlNodeSetPtr nodes, char* content, char* server)
+{
+    assert(nodes);
     xmlNodePtr cur;
     int size;
     int i;
-    
-    assert(output);
+    int length = 0;
     size = (nodes) ? nodes->nodeNr : 0;
-    
-    sprintf(output, "Result (%d nodes):\n", size);
+    length = sprintf(content, "Result (%d nodes):\n", size);
     for(i = 0; i < size; ++i) {
         assert(nodes->nodeTab[i]);
-	
-        if(nodes->nodeTab[i]->type == XML_NAMESPACE_DECL) {
-            xmlNsPtr ns;
-	    
-            ns = (xmlNsPtr)nodes->nodeTab[i];
-            cur = (xmlNodePtr)ns->next;
-            if(cur->ns) { 
-                sprintf(output, "= namespace \"%s\"=\"%s\" for node %s:%s\n", 
-                        ns->prefix, ns->href, cur->ns->href, cur->name);
-            } else {
-                sprintf(output, "= namespace \"%s\"=\"%s\" for node %s\n", 
-                        ns->prefix, ns->href, cur->name);
-            }
-        } else if(nodes->nodeTab[i]->type == XML_ELEMENT_NODE) {
+        
+        if(nodes->nodeTab[i]->type == XML_ELEMENT_NODE) {
             cur = nodes->nodeTab[i];   	    
-            if(cur->ns) { 
-    	        sprintf(output, "= element node \"%s:%s\"\n", 
-                        cur->ns->href, cur->name);
-            } else {
-    	        sprintf(output, "= element node \"%s\"\n", 
-                        cur->name);
+            length += sprintf(content + length, "= Title \"%s\", ", 
+                   cur->children->content);
+            xmlAttrPtr  pxAttr = cur->properties;
+            while (pxAttr) {
+                if (strcmp(pxAttr->name, "href") == 0) {
+                    length += sprintf(content + length, "= href \"%s?%s&%s\"\n", 
+                                      SERVER, server, pxAttr->children->content);
+                }
+                 pxAttr = pxAttr->next;
             }
-        } else {
-            cur = nodes->nodeTab[i];    
-            sprintf(output, "= node \"%s\": type %d, value: %s\n", cur->name, cur->type, cur->content);
+        }
+        
+    }
+    return length;
+
+}
+
+
+int handleOutput(const struct mg_request_info *request_info, xmlNodeSetPtr nodes, char * content)
+{
+
+    char* query_string = NULL;
+    char* server = NULL;
+    query_string = strdup(request_info->query_string);
+    if ((server = strtok(query_string, "&")) == NULL)
+    {
+        server = query_string;
+    }
+    printf("Server: %s\n", server);
+
+    int i;
+    for (i = 0; i < request_info->num_headers;++i) {
+        if (strcmp("User-Agent", request_info->http_headers[i].name) == 0) {
+            printf("Value: %s\n", request_info->http_headers[i].value);
+            if (strstr(request_info->http_headers[i].value, "Mozilla")) {
+                printf("Mozilla browser\n");
+            }
+            if (strstr(request_info->http_headers[i].value, "Wget")) {
+                printf("Wget browser, output simple text\n");
+                return handleWgetOutput(nodes, content, server);
+            }
+            else {
+                printf("Unknown browser\n");
+                
+            }
         }
     }
+    free(query_string);
+    query_string = NULL;
+
 }
 
 
-  /** 
-   * parse a web page and return the serialsList
-   * 
-   * 
-   * @return 
-   */
-int parseSerials(char * content)
+
+void handleFlvParserGetRequest(struct mg_connection *conn, const struct mg_request_info *request_info)
 {
-    htmlDocPtr	doc;
-    xmlXPathContextPtr xpathCtx; 
+
+    int i;
+    char content[2048];
+    int content_length;
+    htmlDocPtr doc;
+    xmlXPathContextPtr xpathCtx;
     xmlXPathObjectPtr xpathObj;
-    
-    doc = htmlReadFile ("http://990.ro", NULL, 0);
-    if (doc == NULL) {
-        printf("Error: cannot read file\n");
-        return(-1);        
-    }
-    printf("File was read\n");
-    
-    xpathCtx = xmlXPathNewContext(doc);
-    if(xpathCtx == NULL) {
-        printf("Error: unable to create new XPath context\n");
+    xpathObj = handleInput(&doc, &xpathCtx, request_info);
+    if (xpathObj) {
+        content_length = handleOutput(request_info, xpathObj->nodesetval, content);
+        /* Cleanup */
+        xmlXPathFreeObject(xpathObj);
+        xmlXPathFreeContext(xpathCtx);
         xmlFreeDoc(doc); 
-        return(-1);
-    }
-    /* Evaluate xpath expression */
-    xmlChar* xpathExpr = "//ul[@id='ddsubmenu1']//a";
-    xpathObj = xmlXPathEvalExpression(xpathExpr, xpathCtx);
-    if(xpathObj == NULL) {
-        fprintf(stderr,"Error: unable to evaluate xpath expression \"%s\"\n", xpathExpr);
-        xmlXPathFreeContext(xpathCtx); 
-        xmlFreeDoc(doc); 
-        return(-1);
-    }
 
-    /* Print results */
-    print_xpath_nodes(xpathObj->nodesetval, content);
-
-    /* Cleanup */
-    xmlXPathFreeObject(xpathObj);
-    xmlXPathFreeContext(xpathCtx); 
-    xmlFreeDoc(doc); 
+        mg_printf(conn,
+                  "HTTP/1.1 200 OK\r\n"
+                  "Content-Type: text/plain\r\n"
+                  "Content-Length: %d\r\n"        // Always set Content-Length
+                  "\r\n"
+                  "%s",
+                  content_length, content);
+        
+    }
 }
 
-
-  /** 
-   * print nodex in a format understood by RTD1073 devices
-   * 
-   * @param nodes 
-   */
-
-void rtd_print_xpath_nodes(xmlNodeSetPtr nodes)
-{
-
-}
-
-
-  //@{ this is the core part of application
+//@{ this is the core part of application
 static void *callback(enum mg_event event,
                       struct mg_connection *conn) {
     const struct mg_request_info *request_info;
     int i = 0;
-    char* query_string = NULL;
-    char* server = NULL;
-    char* path = NULL;
 
 
-    char content[1024];
-    int content_length;
+    xmlXPathObjectPtr xpathObj;
     
+
     if (event == MG_NEW_REQUEST) {
         request_info = mg_get_request_info(conn);
-
         if (strcmp(request_info->request_method, "GET") == 0) {
             
             if (strstr(request_info->uri, "flvParser")) {
-            
-
-
-                for (i = 0; i < request_info->num_headers;++i) {
-                    if (strcmp("User-Agent", request_info->http_headers[i].name) == 0) {
-                        printf("Value: %s\n", request_info->http_headers[i].value);
-                        if (strstr(request_info->http_headers[i].value, "Mozilla")) {
-                            printf("Mozilla browser\n");
-                        }
-                        else {
-                            printf("Unknown browser\n");
-                    
-                        }
-                    }
-                }
-                printf("Query string: %s\n", request_info->query_string);
-                query_string = strdup(request_info->query_string);
-                if (server = strtok(query_string, "&"))
-                {
-                    path = strtok(NULL, "&" );
-                }
-                else {
-                    server = query_string;
-                }
-                
-                printf("Server: %s, path: %s\n", server, path);
-
-                if (strcmp(server, "www.990.ro") == 0) {
-                    content_length = parseSerials(content);
-                }
-                else {
-                    content_length = snprintf(content, sizeof(content),
-                                              "Hello from flvParser, no plugin available for your site %s \n", server);
-                }
-
-                mg_printf(conn,
-                          "HTTP/1.1 200 OK\r\n"
-                          "Content-Type: text/plain\r\n"
-                          "Content-Length: %d\r\n"        // Always set Content-Length
-                          "\r\n"
-                          "%s",
-                          content_length, content);
-                free(query_string);
-                query_string = NULL;
-                // Mark as processed
-                return "";
+                handleFlvParserGetRequest(conn, request_info);
             }
         }
         return "";
@@ -187,6 +225,14 @@ static void *callback(enum mg_event event,
     }
 }
 
+/** 
+ * main function
+ * 
+ * @param argc 
+ * @param argv 
+ * 
+ * @return 
+ */
 int main(int argc, char **argv)
 {
 
@@ -199,4 +245,4 @@ int main(int argc, char **argv)
     
     return(0);
 }
-  //@} 
+//@} 
