@@ -4,6 +4,7 @@
 ** Mision
   - Implement a software application to parse various onDemand web sites 
     and present the content in a much simpler format compatible with embedded media players
+
 * Project content
 ** C application using libxml2 for HTML parsing allowing easely to add new site to parse and new output formats
 ** Use case
@@ -18,3 +19,9 @@
 *** Output plugin
 *** Simplest web server
 
+* How To Build
+** git clone git@github.com:cipibad/flvParser.git
+** git submodule init
+** git submodule update
+** cmake .
+** make
